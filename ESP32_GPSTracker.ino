@@ -1,159 +1,143 @@
+/*
+This code is for a GPS Tracker with SMS controll. 
+It is based on the TTGO T-CALL v1.4   ESP 32 prototype board with onboard IP5306 power management and SIM800L GSM module.
+It also uses an external power switch to be able to switch off external peripherals(Read the documentation on GitHub for more details).
+The GPS module used is a NEO6M module connected via soft serial.
+For full details please go to: https://github.com/ex-tc/ESP32_GPSTracker
+*/
 
 
 
-// Please select the corresponding model
-
-// #define SIM800L_IP5306_VERSION_20190610
+//Global Definitions START
+//Board Config
+//#define SIM800L_IP5306_VERSION_20190610
 //#define SIM800L_AXP192_VERSION_20200327
-// #define SIM800C_AXP192_VERSION_20200609
+//#define SIM800C_AXP192_VERSION_20200609
 #define SIM800L_IP5306_VERSION_20200811
-
 // Define the serial console for debug prints, if needed
 #define DUMP_AT_COMMANDS
 #define TINY_GSM_DEBUG          SerialMon
+// Configure TinyGSM library
+#define TINY_GSM_MODEM_SIM800          // Modem is SIM800
+#define TINY_GSM_RX_BUFFER      1024   // Set RX buffer to 1Kb
+//Sleep Management Control
+#define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
+#define TIME_TO_SLEEP 900        /* Time ESP32 will go to sleep (in seconds) */
+// Set serial for debug console (to the Serial Monitor, default speed 115200)
+#define SerialMon Serial
+// Set serial for AT commands (to the module)
+#define sim800  Serial1
 
+//Global Definitions END
+
+//Includes
 #include "utilities.h"
 #include "macros.h"
 #include <SoftwareSerial.h>
 #include <TinyGPS++.h>
 #include <time.h>
 #include <ESP32Time.h>
-
-//Powermanagement control
-#define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP 600        /* Time ESP32 will go to sleep (in seconds) */
+#include <WiFi.h>
+#include <TinyGsmClient.h>
 
 //esp_light_sleep_start()
 
 
-
+//Global Functianal Declarations
+String senderNumber,msg;
+boolean isReply = false;
+String mapsURL ="https://www.google.com/maps/search/?api=1&query=";
+//Global Gonstants
 
 //Define GPS Configuration
 static const int RXPin = 12, TXPin = 14;
 static const uint32_t GPSBaud = 9600;
-SoftwareSerial ss(RXPin, TXPin);
-
-String mapsURL ="https://www.google.com/maps/search/?api=1&query=";
-TinyGPSPlus gps;
 static const String homessid = WIFI_SSID;
+static const String althomessid = WIFI_SSID2;
+
+//Safe Sender phone number with country code
+const String PHONE = SAFE_SENDER_MOBILE;
+const String PHONE_LIST = SAFE_SENDER_LIST;
 
 
-#include <WiFi.h>
-
-// Set serial for debug console (to the Serial Monitor, default speed 115200)
-#define SerialMon Serial
-// Set serial for AT commands (to the module)
-#define sim800  Serial1
-
-// Configure TinyGSM library
-#define TINY_GSM_MODEM_SIM800          // Modem is SIM800
-#define TINY_GSM_RX_BUFFER      1024   // Set RX buffer to 1Kb
-
-#include <TinyGsmClient.h>
-
-#ifdef DUMP_AT_COMMANDS
-#include <StreamDebugger.h>
-StreamDebugger debugger(sim800, SerialMon);
-TinyGsm modem(debugger);
-#else
+//Other Serial stuff for GPS and GSM 
+SoftwareSerial ss(RXPin, TXPin);
+TinyGPSPlus gps;
 TinyGsm modem(sim800);
-#endif
 
 
-//sender phone number with country code
-const String PHONE = "+44XXXXXXXXXX";
 
-String smsStatus,senderNumber,receivedDate,msg;
-boolean isReply = false;
+//Globl States and Timers
+int masterState = 0;
+int masterStateTime = 0;
+int gpsState = 0;
+int gpsTimer = 30000; //default GPS location test interval in ms
+int smsTimer = 15000; //default SMS test interval in ms
+int smsHomeTimer = 120000; //default SMS test interval delay in ms when home
+int wifiTimer = 300000; //default WiFi sniffer interval in ms
+int Wsn = 0;
+int Gsn = 0;
+int Ssn = 0;
+int HSsn = smsHomeTimer; //Prevents the sleep cycle for home timer cycle (2 minute) this ensures that SMS control is active for 2 minutes on boot up in home state.
 
 
 /*RTC set to UTC*/
 int rtctimestate = 0;
-
 ESP32Time rtc(0);
-
 static bool SetTime(int ss, int minutes, int hh, int DD, int MM, int YYYY)
             {
                   rtc.setTime(ss, minutes, hh, DD, MM, YYYY);
                   return true;
             }
 
+//Device Reset Function
 void(* resetFunc) (void) = 0; //declare reset function @ address 0
 
+//Setup Scripts
 void setup()
 {
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-  //set LED Pin
-  pinMode(25, OUTPUT); //mosfet control
-  pinMode(13, OUTPUT);
-    // Set console baud rate
+  //set GPIO Pins
+  pinMode(25, OUTPUT); //GPS Mosfet Powerswitch Control
+  pinMode(13, OUTPUT); //Blue LED Pin
+  // Set console baud rate
     SerialMon.begin(115200);
-    Serial.println("Start of Setup..");
+    logger_info("Start of Setup..");
     delay(10);
-    Serial.println("Initialize GPS Serial..");
+    logger_info("Initialize GPS Serial..");
     ss.begin(GPSBaud);
     
-    Serial.println("Start power management");
+    logger_info("Start power management");
     if (setupPMU() == false) {
-        Serial.println("Setting power error");
+        logger_info("Setting power error");
     }
-    Serial.println("Scanning for networks and I found...:");
- Serial.println(getWiFiSSid());
-    // Some start operations
-    
+    logger_info("Scanning for networks and I found...:");
+    logger_info(getWiFiSSid());
+    logger_info("Initialize Modem");    
     setupModem();
-
     // Set GSM module baud rate and UART pins
     sim800.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
-
     delay(6000);
-        // Restart takes quite some time
-    // To skip it, call init() instead of restart()
-    SerialMon.println("Initializing modem...");
+    logger_info("Initializing modem...");
     modem.restart();
-
-
     delay(10000);
-
-    String imei = modem.getIMEI();
-    DBG("IMEI:", imei);
-
-    smsStatus = "";
     senderNumber="";
-    receivedDate="";
     msg="";
 
 delay(5000);
   //Set SMS Mode
-  Serial.println("SEND: AT+CMGF=1");
+  logger_info("SEND: AT+CMGF=1");
   Serial.println(GetATCmdResp("AT+CMGF=1",0,5));
-  //delete all sms
-  //Serial.println("SEND: AT+CMGD=1,4");
-  //Serial.println(GetATCmdResp("AT+CMGD=1,4",0,5));
-  //Delete all read SMS
-  Serial.println("SEND: AT+CMGDA=\"DEL READ\"");
-  Serial.println(GetATCmdResp("AT+CMGDA=\"DEL READ\"",0,5));
-  
 
- Serial.println("Setup Done, Starting main program.");   
-//Shut down unwanted peripherals
+ logger_info("Setup Done, Starting main program.");   
+
+//Shut down BLE
 btStop();
-//esp_bluedroid_deinit(void);
+
  
 }
-//globlstates and timers
-int masterState = 0;
-int masterStateTime = 0;
-int gpsState = 0;
-int gpsTimer = 30000; //default GPS location test interval in ms
-int smsTimer = 15000; //default SMS test interval in ms
-int smsHomeTimer = 300000; //default SMS test interval in ms when home
-int wifiTimer = 300000; //default WiFi sniffer interval in ms
-int Wsn = 0;
-int Gsn = 0;
-int Ssn = 0;
-int HSsn = 0;
 
+//Main Loop
 void loop() {
 //Power on the GPS via pin 25 controlling the p-channel mosfet circuit in mode 2 (away)
 if (masterState==2)
@@ -176,33 +160,33 @@ if (masterState==0 || millis() >= Wsn)
 //ModemOff();
 
 
-//SMS State control
+//Home State control 
 if (masterState==1 && millis() >= HSsn)
     {   
-        logger_info("Startup Modem");
-       // setupModem();
-       // delay(5000);
         logger_info("SMS Control");
         ATListener();
+        delay(1000);
         logger_info("Shutdown Modem");
-      //  ModemOff();
-        delay(50);
+        ModemOff();
+        logger_info("Enter Sleep");
+        esp_light_sleep_start();
+        ledblink(3);
+        resetFunc();
+        delay(1000); //Safety to resrart command
         HSsn = millis() + smsHomeTimer;
     }
 
 
-if (masterState==2 && millis() >= Ssn)
+if (masterState > 0 && millis() >= Ssn)
     {
         logger_info("SMS Control");
         ATListener();
         Ssn = millis() + smsTimer;
     }
-  
-//smscheckstate(); depricated?
-
-  while (ss.available() > 0)
+    
+while (ss.available() > 0)
     if (gps.encode(ss.read()))
-     logger_info("ReadGPS");
+    logger_info("ReadGPS");
 }
 
 void ATListener(){
@@ -257,7 +241,7 @@ void parseData(String buff){
     else if(cmd == "+CMGR"){
      
       senderNumber=getSMSProperty(1, buff);
-      if(PHONE.indexOf(senderNumber) > -1){
+      if(PHONE_LIST.indexOf(senderNumber) > -1){
        //Prosess SMS Message from valid sender
        ledblink(1);
        Serial.println("Valid Sender recognized!");
@@ -266,7 +250,7 @@ void parseData(String buff){
        if(getSMSProperty(4, buff).indexOf("gettime") > -1)
             {
             String msg = "Message recived at: "+getSMSProperty(3, buff);
-            Reply(msg);
+            Reply(msg,senderNumber);
             }
         
         if(getSMSProperty(4, buff).indexOf("getmode") > -1)
@@ -282,25 +266,25 @@ void parseData(String buff){
                   {
                     msg = "Mode: 1 Known Location." + instateStr;
                   } 
-            Reply(msg);
+            Reply(msg,senderNumber);
             }
         
         if(getSMSProperty(4, buff).indexOf("getssids") > -1)
         {
           String msg = "# seen,SSID name,rssi:\r" + getWiFiSSid();
-          Reply(msg);
+          Reply(msg,senderNumber);
         }
         
         if(getSMSProperty(4, buff).indexOf("getgps") > -1)
         {
-          String msg = getlocation();
-          Reply(msg);
+          String msg = "GPS Timestamp: "+ getlatestGpsDateTime() +" Geo Location: " + getlocation();
+          Reply(msg,senderNumber);
         }
 
         if(getSMSProperty(4, buff).indexOf("reboot") > -1)
         {
           String msg = "Device Rebooting";
-          Reply(msg);
+          Reply(msg,senderNumber);
           delay(10000);
          resetFunc();
         }
@@ -308,7 +292,7 @@ void parseData(String buff){
         if(getSMSProperty(4, buff).indexOf("sleep") > -1)
         {
           String msg = "Powering down Modem and enetering light sleep mode for 2 minutes";
-          Reply(msg);
+          Reply(msg,senderNumber);
           ledblink(10);
          // ModemOff();
           esp_light_sleep_start();
@@ -334,36 +318,13 @@ void parseData(String buff){
 //************************************************************
 
 
-void doAction(){
-  if(msg == "relay1 off"){  
-  //  digitalWrite(RELAY_1, HIGH);
-    Reply("Relay 1 has been OFF");
-  }
-  else if(msg == "relay1 on"){
-  //  digitalWrite(RELAY_1, LOW);
-    Reply("Relay 1 has been ON");
-  }
-  else if(msg == "relay2 off"){
-  //  digitalWrite(RELAY_2, HIGH);
-    Reply("Relay 2 has been OFF");
-  }
-  else if(msg == "relay2 on"){
-  //  digitalWrite(RELAY_2, LOW);
-    Reply("Relay 2 has been ON");
-  }
 
-  
-  smsStatus = "";
-  senderNumber="";
-  receivedDate="";
-  msg="";  
-}
 
-void Reply(String text)
+void Reply(String text,String Sender)
 {
     sim800.print("AT+CMGF=1\r");
     delay(1000);
-    sim800.print("AT+CMGS=\""+PHONE+"\"\r");
+    sim800.print("AT+CMGS=\""+Sender+"\"\r");
     delay(1000);
     sim800.print(text);
     delay(100);
@@ -431,57 +392,37 @@ static String getlocation(){
 }
 
 
+static String getlatestGpsDateTime(){
+  String gpsdatetime ="";
 
-
-void displayInfo()
-{
-  Serial.print(F("Location: ")); 
-  if (gps.location.isValid())
-  {
-    Serial.print(gps.location.lat(), 6);
-    Serial.print(F(","));
-    Serial.print(gps.location.lng(), 6);
+   if (gps.date.isValid())
+  { 
+    gpsdatetime = gpsdatetime + gps.date.year() +"-" + gps.date.month()+"-"+ gps.date.day()+" ";
   }
   else
   {
-    Serial.print(F("INVALID"));
+    gpsdatetime = gpsdatetime + "INVALID DATE"+" ";
   }
 
-  Serial.print(F("  Date/Time: "));
-  if (gps.date.isValid())
-  {
-    Serial.print(gps.date.month());
-    Serial.print(F("/"));
-    Serial.print(gps.date.day());
-    Serial.print(F("/"));
-    Serial.print(gps.date.year());
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.print(F(" "));
   if (gps.time.isValid())
   {
-    if (gps.time.hour() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.hour());
-    Serial.print(F(":"));
-    if (gps.time.minute() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.minute());
-    Serial.print(F(":"));
-    if (gps.time.second() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.second());
-    Serial.print(F("."));
-    if (gps.time.centisecond() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.centisecond());
+    String gps_h;  
+    if (gps.time.hour() < 10) gps_h="0"+gps.time.hour();
+    if (gps.time.hour() > 9) gps_h=gps.time.hour();
+    String gps_m;
+    if (gps.time.minute() < 10) gps_m="0"+gps.time.minute();
+    if (gps.time.minute() > 9) gps_m=gps.time.minute();
+    String gps_s;
+    if (gps.time.second() < 10) gps_s="0"+gps.time.second();
+    if (gps.time.second() > 9) gps_s="0"+gps.time.second();
+    gpsdatetime = gpsdatetime +gps_h+":"+gps_m+":"+gps_s+" ";
+    
   }
   else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.println();
+    {
+      gpsdatetime = gpsdatetime + "INVALID TIME";
+    }
+  return gpsdatetime;
 }
 
 static void MasterStateLogic()
@@ -490,7 +431,7 @@ static void MasterStateLogic()
     {
       turnOffNetlight(); //Switch off Carrier indicator transistor
       ledblink(5); //flash blue LED for 5 seconds inicating Main startup
-      if (detectHomeSSID(homessid))
+      if (detectHomeSSID(homessid) || detectHomeSSID(althomessid))
           {
           logger_info("Home Wifi was Detected, entering state 1");
           masterState = 1;
@@ -505,7 +446,7 @@ static void MasterStateLogic()
     
 if (masterState == 1)
     {
-     if (detectHomeSSID(homessid))
+     if (detectHomeSSID(homessid) || detectHomeSSID(althomessid))
      {
       logger_info("Home Wifi was Detected");
       } else 
@@ -518,7 +459,7 @@ if (masterState == 1)
      }
 if (masterState == 2)
     {
-     if (detectHomeSSID(homessid))
+     if (detectHomeSSID(homessid) || detectHomeSSID(althomessid))
       {
         logger_info("Home Wifi was Detected, entering state 1");
         masterState = 1;
