@@ -11,7 +11,7 @@
 //Safe Sender phone number with country code
 #define SAFE_SENDER_MOBILE    "+44XXXXXXXXXX"
 #define SAFE_SENDER_LIST      "+44XXXXXXXXXX,+44YYYYYYYYYY"
-#if defined(SIM800L_IP5306_VERSION_20190610)
+
 #if defined(SIM800L_IP5306_VERSION_20190610)
 
 #define MODEM_RST             5
