@@ -68,6 +68,7 @@ TinyGsm modem(sim800);
 
 
 //Globl States and Timers
+int Globalreset = 28800000; //reboot the device every 8h incase it enters a failed state.
 int masterState = 0;
 int masterStateTime = 0;
 int gpsState = 0;
@@ -96,30 +97,27 @@ void(* resetFunc) (void) = 0; //declare reset function @ address 0
 //Setup Scripts
 void setup()
 {
+  SerialMon.begin(115200);
+  logger_info("Start Setup");
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-  //set GPIO Pins
+  logger_info("set GPIO Pins");
   pinMode(25, OUTPUT); //GPS Mosfet Powerswitch Control
   pinMode(13, OUTPUT); //Blue LED Pin
-  // Set console baud rate
-    SerialMon.begin(115200);
-    logger_info("Start of Setup..");
-    delay(10);
-    logger_info("Initialize GPS Serial..");
-    ss.begin(GPSBaud);
-    
-    logger_info("Start power management");
+  logger_info("Initialize GPS Serial..");
+  ss.begin(GPSBaud);
+  logger_info("Start power management");
     if (setupPMU() == false) {
         logger_info("Setting power error");
     }
-    logger_info("Scanning for networks and I found...:");
-    logger_info(getWiFiSSid());
-    logger_info("Initialize Modem");    
-    setupModem();
-    // Set GSM module baud rate and UART pins
+  logger_info("Scanning for networks and I found...:");
+  logger_info(getWiFiSSid());
+  logger_info("Initialize Modem");    
+  setupModem();
+  logger_info("Set GSM module baud rate and UART pins");
     sim800.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
     delay(6000);
     logger_info("Initializing modem...");
-    modem.restart();
+//    modem.restart();
     delay(10000);
     senderNumber="";
     msg="";
@@ -131,10 +129,10 @@ delay(5000);
 
  logger_info("Setup Done, Starting main program.");   
 
-//Shut down BLE
+logger_info("Shut down BLE");
 btStop();
 
- 
+logger_info("Start Done"); 
 }
 
 //Main Loop
@@ -157,8 +155,10 @@ if (masterState==0 || millis() >= Wsn)
       Wsn = millis() + wifiTimer;
     } 
 
-//ModemOff();
 
+
+//display all states and timers
+logger_info("mills:"+String(millis())+" HSsn:"+String(HSsn)+" Ssn:"+String(Ssn)+" Wsn:"+String(Wsn)+" masterState:"+String(masterState));
 
 //Home State control 
 if (masterState==1 && millis() >= HSsn)
@@ -168,7 +168,9 @@ if (masterState==1 && millis() >= HSsn)
         delay(1000);
         logger_info("Shutdown Modem");
         ModemOff();
-        logger_info("Enter Sleep");
+        logger_info("Enter Sleep After "+String(millis()/60000)+" Minutes of Uptime");
+        logger_info("Will wakeup and Reboot device in "+String(TIME_TO_SLEEP/60)+" Minutes.");
+        ledblink(3);
         esp_light_sleep_start();
         ledblink(3);
         resetFunc();
@@ -182,6 +184,7 @@ if (masterState > 0 && millis() >= Ssn)
         logger_info("SMS Control");
         ATListener();
         Ssn = millis() + smsTimer;
+        if (masterState == 2) HSsn = millis() + smsHomeTimer;//ensuring that we dont sleep when switching to mode 1
     }
     
 while (ss.available() > 0)
@@ -291,13 +294,13 @@ void parseData(String buff){
         
         if(getSMSProperty(4, buff).indexOf("sleep") > -1)
         {
-          String msg = "Powering down Modem and enetering light sleep mode for 2 minutes";
+          String msg = "Powering down Modem and enetering light sleep mode for 15 minutes";
           Reply(msg,senderNumber);
           ledblink(10);
-         // ModemOff();
+          ModemOff();
+          delay(200);
           esp_light_sleep_start();
           ledblink(3);
-          //setupModem();
           resetFunc();
         }
 
