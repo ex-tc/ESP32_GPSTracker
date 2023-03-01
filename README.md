@@ -12,3 +12,18 @@ The code accepts commands via SMS that allows you to:
 - Get the GPS coordinates via a Google Maps URL
 - Restart the module
 - Get a list of nearby WiFi SSIDs and their RSSI
+
+
+
+To operate the device you need:
+- Stable 5 volt power source with USB-C connection
+- An active sim card with SMS credits available.
+- A Cell phone with an active SMS plan.
+
+
+Commands:
+- GetTime = Replies with the SMS Timestamp in the SMS.
+- GetMode = Replies with the current operational mode and how many minutes the device has been in this mode.
+- GetSSIDS = Replies with a list of discovered WiFi network SSIDs and their RSSI(Reletive Signal Streangth Indicator)
+- GetGPS = Gets the last GPS Timestamp and GPS location bundled up in a Google Maps URL, if no GPS lock is available an     error is returned.
+- Reboot = Restart the device.
