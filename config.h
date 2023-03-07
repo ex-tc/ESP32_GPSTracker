@@ -18,18 +18,18 @@
 
 
  //Wifi credentials
-#define WIFI_SSID              "MMLA_S"
-#define WIFI_PASSWORD          "MatteoMarco1"
-#define WIFI_SSID2             "MMLA_Mobile"
-#define WIFI_PASSWORD2         "MatteoMarco1"
+#define WIFI_SSID              "xxxxxxx"
+#define WIFI_PASSWORD          "xxxxx"
+#define WIFI_SSID2             "xxxxxxxbile"
+#define WIFI_PASSWORD2         "xxxxxxrxx"
 
 
  //GSM Credentials
 
 
  //Safe Sender phone number with country code
-#define SAFE_SENDER_MOBILE    "+447462087727"
-#define SAFE_SENDER_LIST      "+447462087727,+447497155733"
+#define SAFE_SENDER_MOBILE    "+44XXXXXXXXXX"
+#define SAFE_SENDER_LIST      "+44XXXXXXXXXX,+44XXXXXXXXXX"
 
 
 //operational
