@@ -1,9 +1,10 @@
 /*
-This code is for a GPS Tracker with SMS controll. 
-It is based on the TTGO T-CALL v1.4   ESP 32 prototype board with onboard IP5306 power management and SIM800L GSM module.
-It also uses an external power switch to be able to switch off external peripherals(Read the documentation on GitHub for more details).
-The GPS module used is a NEO6M module connected via soft serial.
-For full details please go to: https://github.com/ex-tc/ESP32_GPSTracker
+*This code is for a GPS Tracker with SMS controll. 
+*It is based on the TTGO T-CALL v1.4 ESP 32 prototype board with onboard IP5306 power management and SIM800L GSM module, there are multiple utility configurations in the utilities.h file including a generic ESP32 config.
+*all configurations including PIN OUT config is set in config.h
+*It also uses an external power switch to be able to switch off external peripherals(Read the documentation on GitHub for more details).
+*The GPS module used is a NEO6M module connected via soft serial.
+*For full details please go to: https://github.com/ex-tc/ESP32_GPSTracker
 */
 
 
@@ -13,6 +14,7 @@ For full details please go to: https://github.com/ex-tc/ESP32_GPSTracker
 //#define SIM800L_IP5306_VERSION_20190610
 //#define SIM800L_AXP192_VERSION_20200327
 //#define SIM800C_AXP192_VERSION_20200609
+//#define GENERIC_ESP32
 #define SIM800L_IP5306_VERSION_20200811
 // Define the serial console for debug prints, if needed
 #define DUMP_AT_COMMANDS
@@ -33,6 +35,7 @@ For full details please go to: https://github.com/ex-tc/ESP32_GPSTracker
 //Includes
 #include "utilities.h"
 #include "macros.h"
+#include "config.h"
 #include <SoftwareSerial.h>
 #include <TinyGPS++.h>
 #include <time.h>
@@ -40,7 +43,7 @@ For full details please go to: https://github.com/ex-tc/ESP32_GPSTracker
 #include <WiFi.h>
 #include <TinyGsmClient.h>
 
-//esp_light_sleep_start()
+
 
 
 //Global Functianal Declarations
@@ -50,7 +53,7 @@ String mapsURL ="https://www.google.com/maps/search/?api=1&query=";
 //Global Gonstants
 
 //Define GPS Configuration
-static const int RXPin = 12, TXPin = 14;
+static const int RXPin = GPS_RX_PIN, TXPin = GPS_TX_PIN;
 static const uint32_t GPSBaud = 9600;
 static const String homessid = WIFI_SSID;
 static const String althomessid = WIFI_SSID2;
@@ -68,14 +71,14 @@ TinyGsm modem(sim800);
 
 
 //Globl States and Timers
-int Globalreset = 28800000; //reboot the device every 8h incase it enters a failed state.
+int Globalreset = GLBL_RST_INTERVAL; //reboot the device every 8h incase it enters a failed state.
 int masterState = 0;
 int masterStateTime = 0;
 int gpsState = 0;
-int gpsTimer = 30000; //default GPS location test interval in ms
-int smsTimer = 15000; //default SMS test interval in ms
-int smsHomeTimer = 120000; //default SMS test interval delay in ms when home
-int wifiTimer = 300000; //default WiFi sniffer interval in ms
+int gpsTimer = GLBL_GPS_INTERVAL; //default GPS location test interval in ms
+int smsTimer = GLBL_SMS_INTERVAL; //default SMS test interval in ms
+int smsHomeTimer = GLBL_SMS_HOME_INTERVAL; //default SMS test interval delay in ms when home
+int wifiTimer = GLBL_WIFI_INTERVAL; //default WiFi sniffer interval in ms
 int Wsn = 0;
 int Gsn = 0;
 int Ssn = 0;
@@ -101,8 +104,8 @@ void setup()
   logger_info("Start Setup");
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
   logger_info("set GPIO Pins");
-  pinMode(25, OUTPUT); //GPS Mosfet Powerswitch Control
-  pinMode(13, OUTPUT); //Blue LED Pin
+  pinMode(GPS_POWER_ON_PIN, OUTPUT); //GPS Mosfet Powerswitch Control
+  pinMode(LED_GPIO_PIN, OUTPUT); //Blue LED Pin
   logger_info("Initialize GPS Serial..");
   ss.begin(GPSBaud);
   logger_info("Start power management");
@@ -165,6 +168,7 @@ if (masterState==1 && millis() >= HSsn)
     {   
         logger_info("SMS Control");
         ATListener();
+        if (STE == true){
         delay(1000);
         logger_info("Shutdown Modem");
         ModemOff();
@@ -174,6 +178,7 @@ if (masterState==1 && millis() >= HSsn)
         esp_light_sleep_start();
         ledblink(3);
         resetFunc();
+        }
         delay(1000); //Safety to resrart command
         HSsn = millis() + smsHomeTimer;
     }
@@ -343,9 +348,9 @@ static void ledblink(int sec)
   sec=sec + sec;
   while (n < sec)
   {
-            digitalWrite(LED_GPIO, LED_ON);
+            digitalWrite(LED_GPIO_PIN, LED_ON);
             delay(250);
-            digitalWrite(LED_GPIO, LED_OFF);  
+            digitalWrite(LED_GPIO_PIN, LED_OFF);  
             delay(250);
             n=n+1;
   }
@@ -415,10 +420,10 @@ static String getlatestGpsDateTime(){
     String gps_m;
     if (gps.time.minute() < 10) gps_m="0"+gps.time.minute();
     if (gps.time.minute() > 9) gps_m=gps.time.minute();
-    String gps_s;
-    if (gps.time.second() < 10) gps_s="0"+gps.time.second();
-    if (gps.time.second() > 9) gps_s="0"+gps.time.second();
-    gpsdatetime = gpsdatetime +gps_h+":"+gps_m+":"+gps_s+" ";
+    //String gps_s;
+    //if (gps.time.second() < 10) gps_s="0"+gps.time.second();
+    //if (gps.time.second() > 9) gps_s="0"+gps.time.second();
+    gpsdatetime = gpsdatetime +gps_h+":"+gps_m+" ";
     
   }
   else

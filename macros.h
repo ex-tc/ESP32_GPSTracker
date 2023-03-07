@@ -1,11 +1,12 @@
-
+#include "config.h"
 #define sim800 Serial1
 #include <WiFi.h>
 static const char* ssid = WIFI_SSID;
 static const char* password = WIFI_PASSWORD;
 static const char* ssid2 = WIFI_SSID2;
 static const char* password2 = WIFI_PASSWORD2;
-static const bool loggmode = true; //enables logging
+static const bool loggmode = DEBUGMODE;
+static const bool STE = ENABLE_SLEEP_TIMERS;
 
 void logger_info(String message){
   if (loggmode == true )
@@ -16,6 +17,7 @@ void logger_info(String message){
 
 
 static void lightsleep(int minutes){
+  if (STE == true){
   int seconds = minutes * 60;
   //#define TIME_TO_SLEEP seconds
   #define uS_TO_S_FACTOR 1000000ULL 
@@ -26,6 +28,7 @@ static void lightsleep(int minutes){
                 esp_light_sleep_start();
                 
   logger_info("Woke Up from Light Sleep Mode");
+  }
 }
 
 

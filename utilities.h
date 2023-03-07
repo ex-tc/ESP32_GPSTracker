@@ -1,24 +1,13 @@
 
-
-
+#include "config.h"
 #include <Wire.h>
 
-// Wifi
-#define WIFI_SSID              "Your SSID Name"
-#define WIFI_PASSWORD          "Wifi Password"
-#define WIFI_SSID2             "Your Other SSID Name"
-#define WIFI_PASSWORD2          "Other Wifi Password"
-//Safe Sender phone number with country code
-#define SAFE_SENDER_MOBILE    "+44XXXXXXXXXX"
-#define SAFE_SENDER_LIST      "+44XXXXXXXXXX,+44YYYYYYYYYY"
-
 #if defined(SIM800L_IP5306_VERSION_20190610)
-
-#define MODEM_RST             5
-#define MODEM_PWRKEY          4
-#define MODEM_POWER_ON       23
-#define MODEM_TX             27
-#define MODEM_RX             26
+#define MODEM_RST            MODEM_RST_PIN
+#define MODEM_PWRKEY         MODEM_PWRKEY_PIN
+#define MODEM_POWER_ON       MODEM_POWER_ON_PIN
+#define MODEM_TX             MODEM_TX_PIN
+#define MODEM_RX             MODEM_RX_PIN
 
 #define I2C_SDA              21
 #define I2C_SCL              22
@@ -47,17 +36,17 @@ bool setupPMU()
 
 #elif defined(SIM800L_AXP192_VERSION_20200327)
 
-#define MODEM_RST            5
-#define MODEM_PWRKEY          4
-#define MODEM_POWER_ON       23
-#define MODEM_TX             27
-#define MODEM_RX             26
+#define MODEM_RST            MODEM_RST_PIN
+#define MODEM_PWRKEY         MODEM_PWRKEY_PIN
+#define MODEM_POWER_ON       MODEM_POWER_ON_PIN
+#define MODEM_TX             MODEM_TX_PIN
+#define MODEM_RX             MODEM_RX_PIN
 #define MODEM_DTR            32
 #define MODEM_RI             33
 
 #define I2C_SDA              21
 #define I2C_SCL              22
-#define LED_GPIO             13
+#define LED_GPIO             LED_GPIO_PIN
 #define LED_ON               HIGH
 #define LED_OFF              LOW
 
@@ -80,23 +69,27 @@ bool setupPMU()
 #elif defined(SIM800L_IP5306_VERSION_20200811)
 
 
-#define MODEM_RST             5
-#define MODEM_PWRKEY          4
-#define MODEM_POWER_ON       23
-#define MODEM_TX             27
-#define MODEM_RX             26
+
+#define MODEM_RST            MODEM_RST_PIN
+#define MODEM_PWRKEY         MODEM_PWRKEY_PIN
+#define MODEM_POWER_ON       MODEM_POWER_ON_PIN
+#define MODEM_TX             MODEM_TX_PIN
+#define MODEM_RX             MODEM_RX_PIN
 
 #define MODEM_DTR            32
 #define MODEM_RI             33
 
 #define I2C_SDA              21
 #define I2C_SCL              22
-#define LED_GPIO             13
+#define LED_GPIO             LED_GPIO_PIN
 #define LED_ON               HIGH
 #define LED_OFF              LOW
 
 #define IP5306_ADDR          0x75
 #define IP5306_REG_SYS_CTL0  0x00
+
+
+
 
 // setPowerBoostKeepOn
 bool setupPMU()
@@ -112,6 +105,18 @@ bool setupPMU()
     }
     return Wire.endTransmission() == 0;
 }
+
+#elif defined(GENERIC_ESP32)
+
+#define MODEM_RST            MODEM_RST_PIN
+#define MODEM_PWRKEY         MODEM_PWRKEY_PIN
+#define MODEM_POWER_ON       MODEM_POWER_ON_PIN
+#define MODEM_TX             MODEM_TX_PIN
+#define MODEM_RX             MODEM_RX_PIN
+#define LED_GPIO             LED_GPIO_PIN
+#define LED_ON               HIGH
+#define LED_OFF              LOW
+
 
 #else
 
